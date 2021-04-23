@@ -1,0 +1,21 @@
+{
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "*": ["types/*"]
+    },
+    "outDir": "./",
+    "noImplicitAny": false,
+    "module": "esnext",
+    "lib": ["es5", "es2015.promise", "dom", "es2015"],
+    "target": "es5",
+    "allowJs": true,
+    "jsx": "react",
+    "moduleResolution": "node",
+    "resolveJsonModule": true,
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true
+  },
+  "include": ["./**/*"],
+  "exclude": ["**/node_modules", "**/__tests__/*"]
+}
