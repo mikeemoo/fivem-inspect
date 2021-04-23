@@ -1,23 +1,9 @@
 import equal from "fast-deep-equal";
 
-RegisterCommand(
-  "gothere",
-  async (_source) => SetEntityCoords(PlayerPedId(), 269.7664, -320.8406, 46.33287, true, false, false, false), false
-);
-
-type Area = {
-  centerX: number;
-  centerY: number;
-  centerZ: number;
-  width: number;
-  height: number;
-  rotation: number;
-};
-
 type MenuItem = {
   eventName: string;
   text: string;
-  arguments: any;
+  arguments?: any;
 };
 
 enum EntityType {
@@ -27,51 +13,62 @@ enum EntityType {
   Object
 }
 
+type Vector = {
+  x: number;
+  y: number;
+  z: number;
+}
+
+type SphereDetails = Vector & { radius: number };
+
+type SphereInfo = {
+  spheres: SphereDetails[];
+  callback: SphereCallback;
+}
+
 type EntityCallback = (entityId: number, entityType: string, entityModel: number) => MenuItem[] | null;
+type SphereCallback = () => MenuItem[] | null;
 
 const RADIANS = Math.PI / 180;
-const entityChecks: EntityCallback[] = [];
+const entityCallbacks: { [resource: string]: EntityCallback[] } = {};
+const sphereCallbacks: { [resource: string]: SphereInfo[] } = {};
 let currentMenuItems: MenuItem[] = [];
 let menuIsOpen = false;
 let previousEntityId = -1;
-const callbacksByResource: { [resource: string]: EntityCallback[] } = {};
 
-const raycastInfrontOfCamera = async (distance: number = 5) => {
-
-	const cameraCoord = GetGameplayCamCoord();
-  const [ rx, _, rz ] = GetGameplayCamRot(0).map((r) => RADIANS * r);
-
-  const destination = [
-    -Math.sin(rz) * Math.abs(Math.cos(rx)), 
-		Math.cos(rz) * Math.abs(Math.cos(rx)), 
-		Math.sin(rx)
-  ].map((direction, i) => cameraCoord[i] + direction * distance);
-  
+const raycastInfrontOfCamera = async (cameraCoord: number[], cameraVec: number[]) => {
+  const destination = cameraVec.map((direction, i) => cameraCoord[i] + direction * 10);
   const shapeTest = StartShapeTestSweptSphere(cameraCoord[0], cameraCoord[1], cameraCoord[2], destination[0], destination[1], destination[2], 0.3, -1, PlayerPedId(), 7);
   return GetShapeTestResult(shapeTest);
 }
 
 const unregister = () => {
   const invokingResource = GetInvokingResource();
-  if (!callbacksByResource[invokingResource]) {
-    return;
-  }
-  callbacksByResource[invokingResource].forEach((callback) => {
-    const index = entityChecks.indexOf(callback);
-    if (index > -1) {
-      entityChecks.splice(index, 1);
-    }
-  })
-  callbacksByResource[invokingResource] = [];
+  delete entityCallbacks[invokingResource];
+  delete sphereCallbacks[invokingResource];
 }
+
+const registerInspectSpheres = (spheres: SphereDetails[], callback: SphereCallback) => {
+  const invokingResource = GetInvokingResource();
+  
+  if (!sphereCallbacks[invokingResource]) {
+    sphereCallbacks[invokingResource] = [];
+  }
+
+  sphereCallbacks[invokingResource].push({
+    spheres,
+    callback
+  });
+};
 
 const registerInspectEntity = (callback: EntityCallback) => {
   const invokingResource = GetInvokingResource();
-  if (!callbacksByResource[invokingResource]) {
-    callbacksByResource[invokingResource] = [];
+  
+  if (!entityCallbacks[invokingResource]) {
+    entityCallbacks[invokingResource] = [];
   }
-  callbacksByResource[invokingResource].push(callback);
-  entityChecks.push(callback)
+
+  entityCallbacks[invokingResource].push(callback);
 };
 
 const closeMenu = () => {
@@ -95,30 +92,69 @@ const openMenu = () => {
 setInterval(async () => {
   
   const nextMenuItems = [];
+  const cameraCoord = GetGameplayCamCoord();
+  const [rx, _, rz] = GetGameplayCamRot(0).map((r) => RADIANS * r);
+  const cameraVec = [
+    -Math.sin(rz) * Math.abs(Math.cos(rx)), 
+		Math.cos(rz) * Math.abs(Math.cos(rx)), 
+		Math.sin(rx)
+  ];
 
-  let [ retval, hit, , , entityId ] = await raycastInfrontOfCamera();
+  let [ retval, hit, , , entityId ] = await raycastInfrontOfCamera(cameraCoord, cameraVec);
 
   if (retval && hit) {
     const entityType: EntityType = GetEntityType(entityId);
     if (entityType !== EntityType.NoEntity) {
       
-      // we've got an entity, but it's differnet from the previous entity, so lets make sure our menu is closed
+      // we've got an entity, but it's different from the previous entity, so lets make sure our menu is closed
       if (menuIsOpen && entityId !== previousEntityId) {
         closeMenu();
       }
 
       // grab the model upfront to avoid every callback having to do it
       const entityModel = GetEntityModel(entityId);
-      entityChecks.map((callback) => callback(entityId, EntityType[entityType].toLowerCase(), entityModel))
-        .filter((a) => !!a)
-        .flat()
-        .forEach((item) => nextMenuItems.push(item))
+      Object.values(entityCallbacks)
+          .flat()
+          .map((callback) => callback(entityId, EntityType[entityType].toLowerCase(), entityModel))
+          .filter((a) => !!a)
+          .flat()
+          .forEach((item) => nextMenuItems.push(item));
+      
 
     } else {
       entityId = -1;
     }
   } else {
     entityId = -1;
+  }
+  
+  if (entityId === -1) {
+    Object.values(sphereCallbacks)
+    .flat()
+    .filter((sphereInfo) => 
+      sphereInfo.spheres.some(({ x, y, z, radius }) => {
+        
+        const distToSphere = Math.sqrt(
+          ((x - cameraCoord[0]) ** 2) +
+          ((y - cameraCoord[1]) ** 2) +
+          ((z - cameraCoord[2]) ** 2)
+        )
+    
+        if (distToSphere > 8) {
+          return false;
+        }
+    
+        const destination = cameraVec.map((direction, i) => cameraCoord[i] + direction * distToSphere);
+        
+        return ((x - destination[0]) ** 2) +
+              ((y - destination[1]) ** 2) +
+              ((z - destination[2]) ** 2) < (radius ** 2);
+      })
+     )
+    .map((sphereInfo) => sphereInfo.callback())
+    .filter((a) => !!a)
+    .flat()
+    .forEach((item) => nextMenuItems.push(item));
   }
 
   // lets not bother sending a message to NUI if everything is identical
@@ -178,3 +214,4 @@ RegisterKeyMapping("+inspect", "Inspect", "keyboard", "e");
 
 global.exports("unregister", unregister);
 global.exports("registerInspectEntity", registerInspectEntity);
+global.exports("registerInspectSpheres", registerInspectSpheres);
