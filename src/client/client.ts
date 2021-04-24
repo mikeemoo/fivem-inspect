@@ -190,15 +190,16 @@ on("__cfx_nui:itemClicked", (menuItem: MenuItem, cb: (res: any) => void) => {
 let enableDebug = false;
 setTick(() => {
   if (enableDebug) {
-    Object.values(sphereCallbacks)
+    const sphereLists = Object.values(sphereCallbacks)
     .flat()
     .map((a) => a.spheres)
     .flat()
     .forEach(({ x, y, z, radius }) => {
-      DrawSphere(x, y, z, radius, 0, 255, 0, 0.2);
+      DrawMarker(28, x, y, z, 0, 0, 0, 0, 0, 0, radius, radius, radius, 0, 255, 0, 100, false, false, 2, false, null, null, false);
     })
   }
 });
+
 
 RegisterCommand(
   "inspect:debug",
