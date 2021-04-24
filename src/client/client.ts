@@ -93,6 +93,7 @@ setInterval(async () => {
   
   const nextMenuItems = [];
   const cameraCoord = GetGameplayCamCoord();
+  const playerCoords = GetEntityCoords(PlayerPedId(), true);
   const [rx, _, rz] = GetGameplayCamRot(0).map((r) => RADIANS * r);
   const cameraVec = [
     -Math.sin(rz) * Math.abs(Math.cos(rx)), 
@@ -119,8 +120,7 @@ setInterval(async () => {
           .filter((a) => !!a)
           .flat()
           .forEach((item) => nextMenuItems.push(item));
-      
-
+ 
     } else {
       entityId = -1;
     }
@@ -128,34 +128,32 @@ setInterval(async () => {
     entityId = -1;
   }
   
-  if (entityId === -1) {
-    Object.values(sphereCallbacks)
-    .flat()
-    .filter((sphereInfo) => 
-      sphereInfo.spheres.some(({ x, y, z, radius }) => {
-        
-        const distToSphere = Math.sqrt(
-          ((x - cameraCoord[0]) ** 2) +
-          ((y - cameraCoord[1]) ** 2) +
-          ((z - cameraCoord[2]) ** 2)
-        )
-    
-        if (distToSphere > 8) {
-          return false;
-        }
-    
-        const destination = cameraVec.map((direction, i) => cameraCoord[i] + direction * distToSphere);
-        
-        return ((x - destination[0]) ** 2) +
-              ((y - destination[1]) ** 2) +
-              ((z - destination[2]) ** 2) < (radius ** 2);
-      })
-     )
-    .map((sphereInfo) => sphereInfo.callback())
-    .filter((a) => !!a)
-    .flat()
-    .forEach((item) => nextMenuItems.push(item));
-  }
+  Object.values(sphereCallbacks)
+  .flat()
+  .filter((sphereInfo) => 
+    sphereInfo.spheres.some(({ x, y, z, radius }) => {
+      
+      if (Vdist2(x, y, z, playerCoords[0], playerCoords[1], playerCoords[2]) > (radius + 4) ** 2) {
+        return false;
+      }
+
+      const distToSphere = Math.sqrt(
+        ((x - cameraCoord[0]) ** 2) +
+        ((y - cameraCoord[1]) ** 2) +
+        ((z - cameraCoord[2]) ** 2)
+      )
+  
+      const destination = cameraVec.map((direction, i) => cameraCoord[i] + direction * distToSphere);
+      
+      return ((x - destination[0]) ** 2) +
+            ((y - destination[1]) ** 2) +
+            ((z - destination[2]) ** 2) < (radius ** 2);
+    })
+   )
+  .map((sphereInfo) => sphereInfo.callback())
+  .filter((a) => !!a)
+  .flat()
+  .forEach((item) => nextMenuItems.push(item));
 
   // lets not bother sending a message to NUI if everything is identical
   if (!equal(nextMenuItems, currentMenuItems)) {
@@ -188,6 +186,27 @@ on("__cfx_nui:itemClicked", (menuItem: MenuItem, cb: (res: any) => void) => {
   emit(menuItem.eventName, menuItem.arguments);
   cb({});
 });
+
+let enableDebug = false;
+setTick(() => {
+  if (enableDebug) {
+    Object.values(sphereCallbacks)
+    .flat()
+    .map((a) => a.spheres)
+    .flat()
+    .forEach(({ x, y, z, radius }) => {
+      DrawSphere(x, y, z, radius, 0, 255, 0, 0.2);
+    })
+  }
+});
+
+RegisterCommand(
+  "inspect:debug",
+  (_source: string, [enabled]: [string]) => {
+    enableDebug = enabled === "true" || enabled === "1";
+  },
+  false
+);
 
 RegisterCommand(
   "+inspect",

@@ -75,7 +75,7 @@ const App = Radium(() => {
     <div style={styles.inspect} ref={wrapperRef}>
       {isExpanded ? 
         <ul style={styles.menuList}>
-          {menuItems.map((menuItem) => <li key={menuItem.eventName} style={styles.menuListItem} onClick={(e) => handleClick(menuItem)}>{menuItem.text}</li>)}
+          {menuItems.map((menuItem, i) => <li key={i} style={styles.menuListItem} onClick={(e) => handleClick(menuItem)}>{menuItem.text}</li>)}
         </ul> : 
         <div style={styles.inspectLabel}>[E] {menuItems.length === 1 ? menuItems[0].text : "Inspect"}</div>
       }
